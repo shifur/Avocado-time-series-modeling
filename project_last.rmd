@@ -1,0 +1,2098 @@
+---
+title:    "MTH783P Final Project"
+author:   "Shakil, 190610029, s.shakil@se23.qmul.ac.uk"
+abstract: "The analysis investigates the average price of avocados using time series forecasting methods. The data is split into two datasets: a training set (from January 1, 2015, to December 31, 2017) and a testing set (from January 2018 to March 11, 2018). This study conducts exploratory data analysis to identify missing values, outliers, and variable correlations, and to manage categorical values. The analysis reveals 1,620 missing values in avocado prices, which are replaced through the imputation method using the mean price for each type of avocado. The study also examines price dynamics by region and avocado type. ARIMA and Simple Exponential Smoothing (SES) models are used to predict future prices, with SES demonstrating slightly better performance based on RMSE and MAE metrics, and prediction curves. However, the ARIMA model has limitations, including its exclusion of external factors like total sales volume and bags sold, which may influence avocado prices. Additionally, using the ARIMA model is particularly challenging when multiple types of seasonality are involved, despite seasonal adjustments being made. This suggests the potential use of dynamic harmonic regression with ARMA errors to accommodate multiple seasonal patterns."
+date:     "Last compiled on:   `r format(Sys.time(), '%d %B, %Y')`"
+output:   pdf_document
+fontsize: 12pt
+header-includes:
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+  \usepackage{lipsum}
+  \usepackage{fancyhdr}
+  \pagestyle{fancy}
+  \renewcommand{\headrulewidth}{0pt}
+  \fancyhf{}
+  \fancyfoot[C]{\twopagenumbers}
+  \fancypagestyle{plain}{
+    \renewcommand{\headrulewidth}{0pt}
+    \fancyhf{}
+    \fancyfoot[C]{\twopagenumbers}
+  }
+  \usepackage[user]{zref}
+  \newcounter{pageaux}
+  \def\currentauxref{PAGEAUX1}
+  \newcommand{\twopagenumbers}{
+    \stepcounter{pageaux}
+    \thepageaux\, of\, \ref{\currentauxref}
+  }
+  \makeatletter
+  \newcommand{\resetpageaux}{
+    \clearpage
+    \edef\@currentlabel{\thepageaux}\label{\currentauxref}
+    \xdef\currentauxref{PAGEAUX\thepage}
+    \setcounter{pageaux}{0}}
+  \AtEndDvi{\edef\@currentlabel{\thepageaux}\label{\currentauxref}}
+  \makeatletter
+---
+
+
+<!--
+#########################################################
+###         DO NOT CHANGE the following code          ###
+#########################################################
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\thispagestyle{empty}
+\newpage
+\setcounter{page}{1}
+
+<!--
+#########################################################
+###      Start writing your report from line 61       ###
+#########################################################
+-->
+
+
+
+```{r setup-packages, include=FALSE}
+# Set a CRAN mirror
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+
+# Install dplyr if not already installed
+if (!require("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+# Install dplyr if not already installed
+if (!require("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+
+# Install dplyr if not already installed
+if (!require("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
+
+# Install dplyr if not already installed
+if (!require("lubridate", quietly = TRUE)) {
+  install.packages("lubridate")
+}
+
+# Install dplyr if not already installed
+if (!require("forecast", quietly = TRUE)) {
+  install.packages("forecast")
+}
+
+# Install dplyr if not already installed
+if (!require("tseries", quietly = TRUE)) {
+  install.packages("tseries")
+}
+
+
+# Load the required package
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(lubridate)
+library(forecast) 
+library (tseries)
+```
+**[a]** The dataset was initially reviewed using commands such as 'summary', 'head', and 'tail'. After sorting the data by date and verifying there were no discrepancies in columns or rows, it was divided into two sets: a training set containing data up to December 31, 2017, and a testing set covering 10 weeks from January 2018 to March 11, 2018. The training dataset includes 16,953 rows and 15 columns, while the testing dataset contains 1,080 rows and 15 columns (# Chunk 2, Page:R-1).
+```{r include=FALSE}
+# Load data 
+data <- read.csv("/Users/shifurrahman/R/avocado.csv")
+summary (data)
+data$Date <- as.Date(data$Date, format = "%Y-%m-%d")
+data_sorted <- arrange(data, Date)
+# Split the dataset
+train_data_set <- filter(data_sorted, Date <= as.Date("2017-12-31"))
+test_data_set <- filter(data_sorted, Date >= as.Date("2018-01-01") & Date <= as.Date("2018-03-11"))
+ 
+```
+
+```{r include=FALSE}
+head(data_sorted)  # Displays the first few rows
+tail(data_sorted)  # Displays the last few rows
+summary(train_data_set$Date)
+summary(test_data_set$Date)
+glimpse(train_data_set ) 
+dim (train_data_set)
+dim (test_data_set)
+```
+**[b] **Before data visualization, the "Date" column was converted to a DateTime format to facilitate time-based analysis. Exploratory data analysis revealed missing values, outliers, and variable relationships, which were assessed using a correlation matrix.
+
+**Missing Value Analysis:** The dataset contains 1,620 missing values for Average Price, suggesting issues with data collection processes. Before applying imputation, the price distribution by avocado type was examined (# Chunk 3, Page:R-1). 
+
+```{r include=FALSE}
+# Count the number of NA value of each column
+null_counts <- colSums(is.na(train_data_set))
+# Show the
+print(null_counts) 
+```
+**Distribution of Average Price:** The distribution analysis revealed that both organic and conventional avocados are normally distributed. Imputation techniques were applied, using the mean price by type to replace missing values. Time series analysis showed that organic avocados consistently cost more than conventional ones (# Chunk 4, Page:R-1, # Chunk 5, Page:R-2).
+
+**Outlier Analysis:** Outlier detection using the IQR method indicated that the CleanedAvgPrice and XlargeBags columns contain no outliers, while other columns do, necessitating further examination. Sales volume and bags sold exhibited the most outliers, suggesting significant variability in these metrics (# Chunk 6, Page:R-2).
+
+**Correlation of the Variables :** A heatmap was used to assess the correlation matrix, revealing a negative correlation between Average Price and most other attributes. However, the correlation between PLU 4046 and Total Volume is notably high, with a coefficient of .98 (# Chunk 7, Page:R-3).
+
+```{r warning=FALSE, include=FALSE}
+# Converting "type" as factor
+train_data_set$type <- as.factor(train_data_set$type) 
+par(mfrow=c(1,2))
+# Visualize the density plot
+ggplot(train_data_set, aes(x=AveragePrice, fill=type)) + 
+  geom_density(alpha=0.75) +  
+  facet_wrap(~type) +  
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5),  
+        legend.position = "bottom") +  
+  labs(title = "Average Price Disaggregated by Type",  
+       x = "Average Price",  
+       y = "Density") +  
+  scale_fill_brewer(palette = "Set2")  
+
+# Create the line plot 
+price_trend_facet <- ggplot(train_data_set, aes(x=Date, y=AveragePrice, color=type)) +
+  geom_line() +
+  facet_wrap(~type) +  
+  theme_minimal() +  
+  theme(legend.position="bottom")  
+
+# Print the plot
+print(price_trend_facet) 
+```
+
+
+```{r include=FALSE}
+# Imputation Techniques for missing value 
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+train_data_set <- train_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+
+```
+
+```{r include=FALSE}
+# Define IQR function to calculate outlier
+count_outliers <- function(data, column) {
+  q1 <- quantile(data[[column]], 0.25, na.rm = TRUE)
+  q3 <- quantile(data[[column]], 0.95, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower_bound <- q1 - 3 * iqr
+  upper_bound <- q3 + 3 * iqr
+  
+  sum(data[[column]] < lower_bound | data[[column]] > upper_bound, na.rm = TRUE)
+}  
+
+outlier_counts <- data.frame(
+  Column = c("CleanedAvgPrice", "Total.Volume", "Small.Bags","Xlarge.Bags", "X4770","X4046","X4225"),
+  Outliers = c(
+    count_outliers(train_data_set, "CleanedAvgPrice"),
+    count_outliers(train_data_set, "Total.Volume"),
+    count_outliers(train_data_set, "Small.Bags") ,
+    count_outliers(train_data_set, "Xlarge.Bags"),
+    count_outliers(train_data_set, "X4770"), 
+    count_outliers(train_data_set, "X4046"), 
+    count_outliers(train_data_set, "X4225")
+    
+  )
+)  
+
+print("Outlier Counts:") 
+print(outlier_counts) 
+
+```
+
+```{r include=FALSE}
+
+# Visualize the the correlation matrix
+cor_data <- train_data_set %>%
+  select(AveragePrice, Total.Volume, Small.Bags, Large.Bags,X4046, X4770,X4046, XLarge.Bags) %>%
+  cor(use = "complete.obs") 
+
+# Create the heatmap
+pheatmap(cor_data, 
+         clustering_distance_rows = "euclidean", 
+         clustering_distance_cols = "euclidean", 
+         clustering_method = "complete", 
+         display_numbers = TRUE, 
+         title = "Correlation Heatmap of Avocado Dataset")  
+ 
+
+library(dplyr)
+
+```
+**[c]** Four time series—average prices of organic and conventional avocados, as well as average prices of organic avocados in the East and West—were analyzed to forecast and compare their performance. Cyclic and seasonal behaviors observed in the dataset suggested non-stationarity, necessitating confirmation through ACF analysis. Regions were categorized as East, West, North, and South, with dummy variables created for types and geographic locations (# Chunk 8, Page:R-3). Strong autocorrelations in the ACF graph indicated the non-stationary nature of the series (# Chunk 9, Page:R-5). 
+
+```{r include=FALSE}
+  # Prepare the dataset
+
+# Dummy Variables for categorical value: 
+
+train_data_set <- train_data_set %>%
+  mutate(ConventionalType = as.integer(type == "conventional")) 
+
+train_data_set <- train_data_set %>%
+  mutate(OrganicType = as.integer(type == "organic")) 
+
+head(train_data_set) 
+
+# Correct mapping from regions to geographic locations
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location' to the dataframe
+train_data_set <- train_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame to see the results
+print(train_data_set) 
+
+# Dummy variables for Geographic Location 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South")) 
+
+
+```
+
+```{r include=FALSE}
+data_organic <- train_data_set %>%
+  filter(type == "organic") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% 
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-05") & Week <= as.Date("2017-12-25")) 
+
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+```
+
+
+```{r include=FALSE}
+
+# Using Box-Cox plot:
+
+plot(BoxCox(ts_data,lambda=0),ylab="lambda=0")
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data)) 
+plot (ts_data_adj) 
+```
+
+```{r include=FALSE}
+# Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj, main = "Initial")
+pacf (ts_data_adj, main = "Initial")
+acf(diff(ts_data_adj), main = " After 1st dif") 
+pacf(diff(ts_data_adj),main = " After 1st dif")
+
+```
+
+Prior to using the ARIMA model, seasonal influences were removed using the `seasadj(decompose(ts_data))` command, as ARIMA requires non-seasonal data. The series underwent a Box-Cox transformation to stabilize variance, followed by differentiation to address non-stationarity (# Chunk 10, Page:R-5). Subsequent ACF and PACF plots indicated stationarity (# Chunk 11, Page:R-5), and the ADF test confirmed this by rejecting the null hypothesis of non-stationarity with a p-value less than 0.05. ARIMA(0,1,2) was initially selected based on ACF and PACF analyses, but further exploration led to the selection of ARIMA(0,1,3) for its lower AICc value, identifying it as the most effective model among those tested (# Chunk 12, Page:R-6).
+
+```{r include=FALSE}
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+ 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,1) 
+Arima(ts_data_adj, order=c(2,1,1)) 
+
+```
+
+```{r echo=FALSE, fig.height=3, fig.width=6}
+# Fit the model 
+par(mfrow=c(1,3))
+fit<-Arima(ts_data_adj, order=c(0,1,3)) 
+checkresiduals(fit) 
+
+```
+An ARIMA (0,1,3) model was fitted, and the residuals were analyzed for white noise characteristics. Although there were some spikes beyond non-significant regions, the Ljung-Box test, with a p-value of 0.05, indicated no serial correlation, and the series has a mean around zero; the residuals were found to be normally distributed (# Chunk 13, Page:R-6). Despite initial observations suggesting potential volatility clusters, analysis of the squares of the residuals confirmed they are stationary (# Chunk 14, Page:R-6), negating the need for a GARCH model. Based on the fitted model, forecasts for the next 10 weeks have been generated (# Chunk 15, Page:R-6).
+
+```{r include=FALSE}
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52)
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals")
+```
+
+```{r include=FALSE}
+# Forecase Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+```
+To assess prediction error and compare model performance, RMSE and MAE were explored. Since RMSE and MAE as standalone metrics provide limited insights, comparisons were made after evaluating other models' performance along with the fitting status from the prediction curve. Prediction intervals from ARIMA models typically widen with extended forecast horizons, accounting only for variation in errors and not for uncertainty in parameter estimates or model order. RMSE and MAE, crucial for model ranking, were 0.6588 and 0.0589, respectively. The predictive line underperformed, with weekly data showing more variation compared to smoother monthly or yearly views (# Chunk 17, Page:R-7).
+
+Simple exponential smoothing was selected after the adjusted time series data showed no trend or seasonality. The alpha parameter in exponential smoothing controls the forecast’s responsiveness to recent observations, risking overfitting. Despite this, forecasts lagged due to the inherent nature of the SES method, which generates forecasts as a weighted sum of past data. The residuals, resembling white noise, showed a zero mean, constant standard deviation, and no correlation between lags. RMSE and MAE for the SES model were calculated, allowing for comparison with the ARIMA (0,1,3) model’s results (# Chunk 18, Page:R-8, # Chunk 19, Page:R-8).
+
+```{r include=FALSE}
+# Dealing with Test data set
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+data_organic_test <- test_data_set %>%
+  filter(type == "organic") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-15")) 
+
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+```
+ 
+```{r include=FALSE}
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value))  
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Create a data frame
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal()  
+```
+
+
+```{r include=FALSE}
+# Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_adj, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals)  
+```
+
+
+
+```{r include=FALSE}
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+```
+
+| Model Name                     | RMSE     | MAE      |
+|--------------------------------|----------|----------|
+| Simple Exponential Smoothing   | 0.0608   | 0.0526   |
+| ARIMA  (0,1,3)                 | 0.0658   | 0.0589   |
+
+**Comparison with avocado type time series:** The summary table indicates that both RMSE and MAE are lower in the SES model compared to the ARIMA (0,1,3) model. Decisions regarding model performance are based on the prediction curve, from which it can be concluded that the SES model outperforms the ARIMA model (# Chunk 19, Page:R-8).
+
+For the conventional type avocado average price time series, the same process was followed, fitting an ARIMA (4,1,1) model based on the AICc, resulting in RMSE and MAE values of 1.223 and 1.224, respectively. In contrast, the SES model demonstrated a better fit, showing RMSE and MAE values of 0.93 and 1.221, respectively (# Chunk 20, Page:R-8).
+
+
+```{r include=FALSE}
+data_conventional <- train_data_set %>%
+  filter(type == "conventional") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-05") & Week <= as.Date("2017-12-31")) 
+
+start_year <- year(data_conventional$Week[1]) 
+start_week <- isoweek(data_conventional$Week[1]) 
+
+# Create the time series object
+ts_data_conven <- ts(data_conventional$CleanedAvgPrice, 
+                     start = c(start_year, start_week), 
+                     frequency = 52) 
+
+par(mfrow=c(1,3)) 
+# Print 
+plot(ts_data, main = "time series of price", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data_conven), main = "ACF") 
+pacf((ts_data_conven),main = "PACF") 
+
+# Using Box-Cox plot:
+
+# Using Box-Cox plot:
+
+ts_data_transformed <- BoxCox(ts_data_conven, lambda = 0)
+
+
+# Adding seasonal adjustment
+ts_data_adj_conv <- seasadj(decompose(ts_data_transformed)) 
+plot (ts_data_adj_conv) 
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4)) 
+acf (ts_data_adj_conv) 
+pacf (ts_data_adj_conv)
+acf(diff(ts_data_adj_conv))   
+pacf(diff(ts_data_adj_conv))   
+
+adf.test (diff(ts_data_adj_conv))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,0) 
+
+Arima(ts_data_adj_conv, order=c(0,1,0)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,0) 
+
+Arima(ts_data_adj_conv, order=c(1,1,0)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj_conv, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,2) 
+Arima(ts_data_adj_conv, order=c(2,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,2,1) 
+Arima(ts_data_adj_conv, order=c(0,2,1)) 
+
+best_conventional<-auto.arima(ts_data_adj_conv, seasonal=FALSE) 
+best_conventional
+
+
+fit_con<-Arima(ts_data_adj_conv, order=c(4,1,1)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res_conv <- ts(residuals(fit_con)^2, frequency = 52) 
+Acf(ts_res_conv, main="ACF of Squared Residuals") 
+pacf (ts_res_conv, main="ACF of Squared Residuals") 
+
+
+# Forecase Value:
+forecast_values_con <- forecast(fit_con, h = 10) 
+autoplot(forecast_values_con) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_conventional_test <- test_data_set %>%
+  filter(type == "conventional") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-15")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_conventional_test, 10) 
+summary (data_conventional_test)
+plot (data_conventional_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices_con <- head(data_conventional_test$CleanedAvgPrice, 10) 
+
+# Extract forecasted values
+forecasted_prices_con <- forecast_values_con$mean 
+
+actual_prices_df <- data.frame(Time = time(forecast_values_con$mean), Actual = actual_prices_con ) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values_con$mean), y = forecasted_prices_con), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values_con$mean), y = forecasted_prices_con), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+
+print (forecasted_prices_con) 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices_con - actual_prices_con)^2))
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices_con - forecasted_prices_con)) 
+print(paste("MAE:", mae_value))  
+
+# Simple Exponential Smoothing 
+ts_das_ses<- ses(ts_data_adj_conv, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals) 
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+
+```
+
+```{r include=FALSE}
+
+# Correct mapping from regions to geographic locations using setNames
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location' to the dataframe
+train_data_set <- train_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame to see the results
+print(train_data_set) 
+
+
+# Dummy variables for Geographic Location 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South")) 
+
+# Correct mapping from regions to geographic locations using setNames
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location'
+test_data_set <- test_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame 
+print(test_data_set) 
+
+# Dummy variables for Geographic Location 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West"))  
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South"))
+
+```
+
+```{r include=FALSE}
+# Region and Avocado type dynamics
+
+data_organic <- train_data_set %>%
+  filter(type == "organic" & Geo_East == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-04") & Week <= as.Date("2017-12-31")) 
+
+# Assume the first week starts with the first date in 'data_organic'
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+# Using Box-Cox plot:
+ts_data_transformed <- BoxCox(ts_data, lambda = 0)
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data_transformed )) 
+plot (ts_data_adj)
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj)
+pacf (ts_data_adj)
+acf(diff(ts_data_adj)) 
+pacf(diff(ts_data_adj))
+
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,1) 
+Arima(ts_data_adj, order=c(2,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+
+# Fit the model 
+
+fit<-Arima(ts_data_adj, order=c(3,1,1)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52)
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals")
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(fit),trace=FALSE) 
+summary(ftse.garch) 
+
+# Forecase Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  
+      is.na(AveragePrice) & type == "organic" ~ 1.66,    
+      TRUE ~ AveragePrice                                 
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_organic_test <- test_data_set %>%
+  filter( type == "organic" & Geo_East == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-11")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# Extract forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value)) 
+
+# Create a data frame for actual prices with proper time indexing
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+# Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_adj, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals) 
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(ts_das_ses),trace=FALSE) 
+summary(ftse.garch) 
+print (ftse.garch)
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+```
+
+```{r include=FALSE}
+
+# Region and Avocado type dynamics
+data_organic <- train_data_set %>%
+  filter(type == "organic" & Geo_West == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-04") & Week <= as.Date("2017-12-31")) 
+
+# Assume the first week starts with the first date in 'data_organic'
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+# Using Box-Cox plot:
+
+ts_data_transformed <- BoxCox(ts_data, lambda = 0)
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data_transformed)) 
+plot (ts_data_adj) 
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj)
+pacf (ts_data_adj)
+acf(diff(ts_data_adj)) 
+pacf(diff(ts_data_adj))
+
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+# Fit the model 
+
+# Using auto arima function 
+best_ts_data_adj<-auto.arima(ts_data_adj, seasonal=FALSE)
+best_ts_data_adj
+
+
+
+fit<-Arima(ts_data_adj, order=c(4,1,0)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52) 
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals") 
+
+# Fit a GARCH
+
+ftse.garch <- garch(residuals(fit),trace=FALSE) 
+summary(ftse.garch) 
+
+# Forecase Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_organic_test <- test_data_set %>%
+  filter( type == "organic" & Geo_West == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-11")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# Extract forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value)) 
+
+# Create a data frame for actual prices with proper time indexing
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+# Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_transformed, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals)
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(ts_das_ses),trace=FALSE) 
+summary(ftse.garch) 
+print (ftse.garch)
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+```
+
+**Comparison of Region and Avocado Type-wise Dynamics:** The time series for organic avocados in the West region was analyzed, applying procedures similar to those in Case 1 (average avocado price with organic type). An ARIMA (4,1,0) model was selected for its lower error metrics compared to other tested ARIMA models. Residual analysis indicated white noise characteristics according to the ACF and histogram, yet signs of volatility clustering were observed and addressed with a GARCH model. An SES model also revealed similar residual volatility, prompting the application of a GARCH model. For the ARIMA model, RMSE and MAE were 1.14 and 1.13, respectively. The ARIMA (4,1,1) model, despite its predictions, did not fit as well as the SES, with RMSE and MAE values of 1.227 and 1.130, respectively (# Chunk 23, Page:R-18).
+
+The analysis of organic avocados in the East region yielded almost similar results, using an ARIMA (1,1,1) with RMSE and MAE at 1.059 and 1.058, respectively, while the SES model showed errors of RMSE 1.088 and MAE 1.058 (# Chunk 22, Page:R-14).
+
+**Weakness of the Analysis:** The ARIMA model focused solely on the time series data of avocado's average price, overlooking other potentially influential factors such as the total volume sold and the number of avocados with PLU 4046 sold, thereby missing a broader picture that might influence average prices. Although seasonal adjustments were made to remove influences from the data, managing multiple types of seasonality can be challenging. For these time series, a dynamic harmonic regression with ARMA errors approach, modeling seasonal patterns with Fourier terms and handling short-term dynamics with ARMA errors, appears most suitable. The initial distribution of avocado prices by type, appearing normally distributed, led to replacing missing values with the mean for each type. An alternative approach could involve fitting an ARIMA model to data containing missing values and using the model to interpolate the missing observations.
+
+
+
+<!--
+#########################################################
+### DO NOT CHANGE the code until the section 'R code' ###
+#########################################################
+-->
+
+
+\newpage
+\thispagestyle{empty}
+\begin{center}
+\Huge \bf [END of the REPORT]
+\end{center}
+
+
+\resetpageaux
+\renewcommand{\thepageaux}{R-\arabic{pageaux}}
+
+
+
+# R code
+
+<!--
+#########################################################
+###              Start typing from here               ###
+#########################################################
+-->
+
+```{r fig.show='hide', paged.print=TRUE, results='hide'}
+# Chunk 1
+#Load data 
+data <- read.csv("/Users/shifurrahman/R/avocado.csv")
+summary (data)
+data$Date <- as.Date(data$Date, format = "%Y-%m-%d")
+data_sorted <- arrange(data, Date)
+# Split the dataset
+train_data_set <- filter(data_sorted, Date <= as.Date("2017-12-31"))
+test_data_set <- filter(data_sorted, Date >= as.Date("2018-01-01") & Date <= as.Date("2018-03-11"))
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 2
+# Summary Data
+head(data_sorted)  # Displays the first few rows
+tail(data_sorted)  # Displays the last few rows
+summary(train_data_set$Date)
+summary(test_data_set$Date)
+glimpse(train_data_set ) 
+dim (train_data_set)
+dim (test_data_set)
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 3: Missing Value Analysis
+# Count the number of NA value of each column
+null_counts <- colSums(is.na(train_data_set))
+# Show the
+print(null_counts) 
+```
+
+```{r fig.show='hide', warning=FALSE, results='hide'}
+# Chunk 4: Distribution of AvgPrice based on Avocado Type
+# Converting "type" as factor
+train_data_set$type <- as.factor(train_data_set$type) 
+par(mfrow=c(1,2))
+# Visualize the density plot
+ggplot(train_data_set, aes(x=AveragePrice, fill=type)) + 
+  geom_density(alpha=0.75) +  
+  facet_wrap(~type) +  
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5),  
+        legend.position = "bottom") +  
+  labs(title = "Average Price Disaggregated by Type",  
+       x = "Average Price",  
+       y = "Density") +  
+  scale_fill_brewer(palette = "Set2")  
+
+# Create the line plot 
+price_trend_facet <- ggplot(train_data_set, aes(x=Date, y=AveragePrice, color=type)) +
+  geom_line() +
+  facet_wrap(~type) +  
+  theme_minimal() +  
+  theme(legend.position="bottom")  
+
+# Print the plot
+print(price_trend_facet) 
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 5:Imputation Techniques for missing value 
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+train_data_set <- train_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 6: Outliers Analysis
+# Define IQR function to calculate outlier
+count_outliers <- function(data, column) {
+  q1 <- quantile(data[[column]], 0.25, na.rm = TRUE)
+  q3 <- quantile(data[[column]], 0.95, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower_bound <- q1 - 3 * iqr
+  upper_bound <- q3 + 3 * iqr
+  
+  sum(data[[column]] < lower_bound | data[[column]] > upper_bound, na.rm = TRUE)
+}  
+
+outlier_counts <- data.frame(
+  Column = c("CleanedAvgPrice", "Total.Volume", "Small.Bags","Xlarge.Bags", "X4770","X4046","X4225"),
+  Outliers = c(
+    count_outliers(train_data_set, "CleanedAvgPrice"),
+    count_outliers(train_data_set, "Total.Volume"),
+    count_outliers(train_data_set, "Small.Bags") ,
+    count_outliers(train_data_set, "Xlarge.Bags"),
+    count_outliers(train_data_set, "X4770"), 
+    count_outliers(train_data_set, "X4046"), 
+    count_outliers(train_data_set, "X4225")
+    
+  )
+)  
+
+print("Outlier Counts:") 
+print(outlier_counts) 
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 7: Relationship between variables
+# Visualize the the correlation matrix
+cor_data <- train_data_set %>%
+  select(AveragePrice, Total.Volume, Small.Bags, Large.Bags,X4046, X4770,X4046, XLarge.Bags) %>%
+  cor(use = "complete.obs") 
+
+# Create the heatmap
+pheatmap(cor_data, 
+         clustering_distance_rows = "euclidean", 
+         clustering_distance_cols = "euclidean", 
+         clustering_method = "complete", 
+         display_numbers = TRUE, 
+         title = "Correlation Heatmap of Avocado Dataset")  
+
+library(dplyr)
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 8: Prepare the dataset and handling Categorical value
+
+# Dummy Variables for categorical value: 
+
+train_data_set <- train_data_set %>%
+  mutate(ConventionalType = as.integer(type == "conventional")) 
+
+train_data_set <- train_data_set %>%
+  mutate(OrganicType = as.integer(type == "organic")) 
+
+head(train_data_set) 
+
+# Correct mapping from regions to geographic locations
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location' to the dataframe
+train_data_set <- train_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame to see the results
+print(train_data_set) 
+
+# Dummy variables for Geographic Location 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South")) 
+
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 9: Organic Avocado time series
+data_organic <- train_data_set %>%
+  filter(type == "organic") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% 
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-05") & Week <= as.Date("2017-12-25")) 
+
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 10: Box-Cox plot and seasonal adjustment 
+
+# Using Box-Cox plot
+plot(BoxCox(ts_data,lambda=0),ylab="lambda=0")
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data)) 
+plot (ts_data_adj) 
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 11: Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj, main = "Initial")
+pacf (ts_data_adj, main = "Initial")
+acf(diff(ts_data_adj), main = " After 1st dif") 
+pacf(diff(ts_data_adj),main = " After 1st dif")
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 12: ADF test and ARIMA Model 
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,1) 
+Arima(ts_data_adj, order=c(2,1,1)) 
+
+```
+
+```{r fig.show='hide', results='hide'}
+# # Chunk 13: Fit the model 
+
+fit<-Arima(ts_data_adj, order=c(0,1,3)) 
+checkresiduals(fit) 
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 14: ACF and PACF of Squared Residuals 
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52)
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals")
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 15: Forecast Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+```
+
+```{r fig.show='hide', results='hide'}
+# # Chunk 16: Dealing with Test data set
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+data_organic_test <- test_data_set %>%
+  filter(type == "organic") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-15")) 
+
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+```
+
+```{r fig.show='hide', results='hide'}
+## Chunk 17: Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value))  
+```
+```{r message=FALSE, warning=FALSE, fig.show='hide'}
+# Create a data frame
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal()  
+```
+
+```{r fig.show='hide', results='hide'}
+# # Chunk 18: Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_adj, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals)  
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 19: RMSE and MAE for SES model
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+```
+
+```{r fig.show='hide', message=FALSE, warning=FALSE, results='hide'}
+# Chunk 20: Avocado type (Conventional) Time Series Analysis 
+data_conventional <- train_data_set %>%
+  filter(type == "conventional") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-05") & Week <= as.Date("2017-12-31")) 
+
+start_year <- year(data_conventional$Week[1]) 
+start_week <- isoweek(data_conventional$Week[1]) 
+
+# Create the time series object
+ts_data_conven <- ts(data_conventional$CleanedAvgPrice, 
+                     start = c(start_year, start_week), 
+                     frequency = 52) 
+
+par(mfrow=c(1,3)) 
+# Print 
+plot(ts_data, main = "time series of price", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data_conven), main = "ACF") 
+pacf((ts_data_conven),main = "PACF") 
+
+# Using Box-Cox plot:
+
+# Using Box-Cox plot:
+
+ts_data_transformed <- BoxCox(ts_data_conven, lambda = 0)
+
+
+# Adding seasonal adjustment
+ts_data_adj_conv <- seasadj(decompose(ts_data_transformed)) 
+plot (ts_data_adj_conv) 
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4)) 
+acf (ts_data_adj_conv) 
+pacf (ts_data_adj_conv)
+acf(diff(ts_data_adj_conv))   
+pacf(diff(ts_data_adj_conv))   
+
+adf.test (diff(ts_data_adj_conv))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,0) 
+
+Arima(ts_data_adj_conv, order=c(0,1,0)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,0) 
+
+Arima(ts_data_adj_conv, order=c(1,1,0)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj_conv, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,2) 
+Arima(ts_data_adj_conv, order=c(2,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,2,1) 
+Arima(ts_data_adj_conv, order=c(0,2,1)) 
+
+best_conventional<-auto.arima(ts_data_adj_conv, seasonal=FALSE) 
+best_conventional
+
+
+fit_con<-Arima(ts_data_adj_conv, order=c(4,1,1)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res_conv <- ts(residuals(fit_con)^2, frequency = 52) 
+Acf(ts_res_conv, main="ACF of Squared Residuals") 
+pacf (ts_res_conv, main="ACF of Squared Residuals") 
+
+
+# Forecase Value:
+forecast_values_con <- forecast(fit_con, h = 10) 
+autoplot(forecast_values_con) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_conventional_test <- test_data_set %>%
+  filter(type == "conventional") %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-15")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_conventional_test, 10) 
+summary (data_conventional_test)
+plot (data_conventional_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices_con <- head(data_conventional_test$CleanedAvgPrice, 10) 
+
+# Extract forecasted values
+forecasted_prices_con <- forecast_values_con$mean 
+
+actual_prices_df <- data.frame(Time = time(forecast_values_con$mean), Actual = actual_prices_con ) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values_con$mean), y = forecasted_prices_con), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values_con$mean), y = forecasted_prices_con), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+
+print (forecasted_prices_con) 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices_con - actual_prices_con)^2))
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices_con - forecasted_prices_con)) 
+print(paste("MAE:", mae_value))  
+
+# Simple Exponential Smoothing 
+ts_das_ses<- ses(ts_data_adj_conv, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals) 
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+
+```
+
+```{r fig.show='hide', results='hide'}
+# Chunk 21: Test Data Regions to  Geographic Locations
+# Correct mapping from regions to geographic locations using setNames
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location' to the dataframe
+train_data_set <- train_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame to see the results
+print(train_data_set) 
+
+
+# Dummy variables for Geographic Location 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+train_data_set <- train_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South")) 
+
+# Correct mapping from regions to geographic locations using setNames
+region_to_location <- setNames(
+  c(
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East", "East", "East", "East", "East", "East", "East", "East",
+    "East", "East", "East",
+    "West", "West", "West", "West", "West", "West", "West", "West", "West", "West", 
+    "West", "West",
+    "North", "North", "North", "North", "North", "North", "North",
+    "South", "South", "South", "South", "South", "South", "South", "South",
+    "South", "South","South", "South", "South"
+  ), 
+  c(
+    "Albany", "Atlanta", "BaltimoreWashington", "Boston", "BuffaloRochester",
+    "Charlotte", "HarrisburgScranton", "HartfordSpringfield", "Jacksonville",
+    "MiamiFtLauderdale", "NewYork", "Northeast", "NorthernNewEngland", "Orlando",
+    "Philadelphia", "RaleighGreensboro", "RichmondNorfolk", "Roanoke", "SouthCarolina",
+    "Southeast", "Syracuse", "Tampa",
+    "Boise", "California", "LasVegas", "LosAngeles", "PhoenixTucson", "Portland",
+    "Sacramento", "SanDiego", "SanFrancisco", "Seattle", "Spokane", "West", "WestTexNewMexico",
+    "Chicago", "CincinnatiDayton", "Columbus", "Detroit", "GrandRapids", "GreatLakes",
+    "Indianapolis", "Louisville", "Midsouth", "MinneapolisStPaul",
+    "DallasFtWorth", "Houston", "Nashville", "NewOrleansMobile", "Pittsburgh", "SouthCentral", "StLouis",
+    "Denver", "Plains", "TotalUS"
+  )
+) 
+
+# Add a new column 'Geographic_Location'
+test_data_set <- test_data_set %>%
+  mutate(Geographic_Location = region_to_location[region]) 
+
+# Print the updated data frame 
+print(test_data_set) 
+
+# Dummy variables for Geographic Location 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_East = as.integer(Geographic_Location == "East")) 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_West = as.integer(Geographic_Location == "West"))  
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_North = as.integer(Geographic_Location == "North")) 
+
+test_data_set <- test_data_set %>%
+  mutate(Geo_South = as.integer(Geographic_Location == "South"))
+
+```
+
+```{r fig.show='hide', message=FALSE, warning=FALSE, results='hide'}
+#  Chunk 22: Region and Avocado type
+# Type = Organic and Geo Location= East
+
+data_organic <- train_data_set %>%
+  filter(type == "organic" & Geo_East == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-04") & Week <= as.Date("2017-12-31")) 
+
+# Assume the first week starts with the first date in 'data_organic'
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+# Using Box-Cox plot:
+ts_data_transformed <- BoxCox(ts_data, lambda = 0)
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data_transformed )) 
+plot (ts_data_adj)
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj)
+pacf (ts_data_adj)
+acf(diff(ts_data_adj)) 
+pacf(diff(ts_data_adj))
+
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+
+# Fit an ARIMA Model ~ ARIMA (2,1,1) 
+Arima(ts_data_adj, order=c(2,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+
+# Fit the model 
+
+fit<-Arima(ts_data_adj, order=c(3,1,1)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52)
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals")
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(fit),trace=FALSE) 
+summary(ftse.garch) 
+
+# Forecase Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  
+      is.na(AveragePrice) & type == "organic" ~ 1.66,    
+      TRUE ~ AveragePrice                                 
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_organic_test <- test_data_set %>%
+  filter( type == "organic" & Geo_East == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-11")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# Extract forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value)) 
+
+# Create a data frame for actual prices with proper time indexing
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+# Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_adj, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals) 
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(ts_das_ses),trace=FALSE) 
+summary(ftse.garch) 
+print (ftse.garch)
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value)) 
+
+```
+
+```{r fig.show='hide', message=FALSE, warning=FALSE, results='hide'}
+#  Chunk 23: Region and Avocado type
+# # Type = Conventional and Geo Location= West
+data_organic <- train_data_set %>%
+  filter(type == "organic" & Geo_West == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2015-01-04") & Week <= as.Date("2017-12-31")) 
+
+# Assume the first week starts with the first date in 'data_organic'
+start_year <- year(data_organic$Week[1]) 
+start_week <- isoweek(data_organic$Week[1]) 
+
+# Create the time series object
+ts_data <- ts(data_organic$CleanedAvgPrice, 
+              start = c(start_year, start_week), 
+              frequency = 52)
+
+par(mfrow=c(1,3)) 
+# Print and plot the time series to check
+plot(ts_data, main = "Avg Price Organic Avocado", ylab = "Price", xlab = "Time (Weeks)") 
+
+# Using ACF/PACF 
+
+acf((ts_data), main = "ACF")
+pacf((ts_data),main = "PACF") 
+
+# Using Box-Cox plot:
+
+ts_data_transformed <- BoxCox(ts_data, lambda = 0)
+
+# Adding seasonal adjustment
+ts_data_adj <- seasadj(decompose(ts_data_transformed)) 
+plot (ts_data_adj) 
+
+# Using first difference to remove trend 
+par(mfrow=c(1,4))
+acf (ts_data_adj)
+pacf (ts_data_adj)
+acf(diff(ts_data_adj)) 
+pacf(diff(ts_data_adj))
+
+# ADF test 
+adf.test (diff(ts_data_adj))   
+
+# Fit an ARIMA Model ~ ARIMA (0,1,2) 
+
+Arima(ts_data_adj, order=c(0,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (1,1,2) 
+
+Arima(ts_data_adj, order=c(1,1,2)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,1) 
+Arima(ts_data_adj, order=c(0,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (0,1,3) 
+Arima(ts_data_adj, order=c(0,1,3)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+
+# Fit an ARIMA Model ~ ARIMA (3,1,1) 
+Arima(ts_data_adj, order=c(3,1,1)) 
+# Fit the model 
+
+# Using auto arima function 
+best_ts_data_adj<-auto.arima(ts_data_adj, seasonal=FALSE)
+best_ts_data_adj
+
+
+
+fit<-Arima(ts_data_adj, order=c(4,1,0)) 
+checkresiduals(fit) 
+
+par(mfrow=c(1,2))
+ts_res <- ts(residuals(fit)^2, frequency = 52) 
+Acf(ts_res, main="ACF of Squared Residuals")
+pacf (ts_res, main="ACF of Squared Residuals") 
+
+# Fit a GARCH
+
+ftse.garch <- garch(residuals(fit),trace=FALSE) 
+summary(ftse.garch) 
+
+# Forecase Value:
+forecast_values <- forecast(fit, h = 10) 
+autoplot(forecast_values) + ggtitle("Forecasted Prices for the First 10 Weeks of 2018") 
+
+# Dealing with test data: 
+
+# Create a new column 'Cleaned Price' based on conditional NA replacement
+test_data_set <- test_data_set %>%
+  mutate(
+    CleanedAvgPrice = case_when(
+      is.na(AveragePrice) & type == "conventional" ~ 1.16,  # Set to 1.16 for conventional if NA
+      is.na(AveragePrice) & type == "organic" ~ 1.66,      # Set to 1.66 for organic if NA
+      TRUE ~ AveragePrice                                  # Otherwise, use the current AveragePrice
+    )
+  ) 
+# Check the first few rows to verify the new column
+head(test_data_set) 
+
+# Filter for organic type and convert dates to the start of each week
+data_organic_test <- test_data_set %>%
+  filter( type == "organic" & Geo_West == 1) %>%
+  mutate(Week = floor_date(Date, unit = "week", week_start = 1)) %>% # Set week start on Monday
+  group_by(Week) %>%
+  summarize(CleanedAvgPrice = mean(CleanedAvgPrice), .groups = 'drop') %>%
+  filter(Week >= as.Date("2018-01-01") & Week <= as.Date("2018-03-11")) 
+
+# Display the first 10 rows of the data_organic_test DataFrame
+head(data_organic_test, 10) 
+summary (data_organic_test)
+plot (data_organic_test)
+
+# Calculating RMSE, MAPE
+
+# Actual prices for the first 10 weeks of 2018
+actual_prices <- head(data_organic_test$CleanedAvgPrice, 10)
+
+# Extract forecasted values
+forecasted_prices <- forecast_values$mean 
+
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_prices - actual_prices)^2))
+print(paste("RMSE:", rmse_value)) 
+
+# Calculate MAE
+mae_value <- mean(abs(actual_prices - forecasted_prices)) 
+print(paste("MAE:", mae_value)) 
+
+# Create a data frame for actual prices with proper time indexing
+actual_prices_df <- data.frame(Time = time(forecast_values$mean), Actual = actual_prices) 
+
+# Use ggplot2 to create the plot
+ggplot() +
+  geom_line(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue", size = 1) +
+  geom_point(aes(x = time(forecast_values$mean), y = forecasted_prices), color = "blue") +
+  geom_point(data = actual_prices_df, aes(x = Time, y = Actual), color = "red") +
+  geom_line(data = actual_prices_df, aes(x = Time, y = Actual), color = "red", size = 1) +
+  labs(title = "Forecast vs Actual Prices", x = "Time", y = "Price") +
+  theme_minimal() 
+# Simple Expoential Smoothing 
+ts_das_ses<- ses(ts_data_transformed, alpha=0.7,h=10)  
+plot(ts_das_ses) 
+lines(ts_das_ses$fitted, col='red',main="") 
+lines(ts_das_ses$mean, col='red',main="") 
+par(mfrow=c(2,2)) 
+plot(as.vector(ts_das_ses$fitted),as.vector(ts_das_ses$residuals),
+     xlab="Fitted values",ylab="Residuals") 
+hist(ts_das_ses$residuals,main="") 
+plot(ts_das_ses$residuals,ylab="Residuals")
+acf(ts_das_ses$residuals)
+
+# Fit a GARCH
+ftse.garch <- garch(residuals(ts_das_ses),trace=FALSE) 
+summary(ftse.garch) 
+print (ftse.garch)
+
+forecasted_values <- ts_das_ses$mean
+# Calculate RMSE
+rmse_value <- sqrt(mean((forecasted_values - actual_prices)^2)) 
+print(paste("RMSE:", rmse_value))  
+
+# Calculate MAPE
+mae_value <- mean(abs(actual_prices - forecasted_values)) 
+print(paste("MAE:", mae_value))   
+```
+
